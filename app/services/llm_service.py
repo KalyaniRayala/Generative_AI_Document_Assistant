@@ -1,66 +1,125 @@
-import os
-
-from dotenv import load_dotenv
 from groq import Groq
+from openai import OpenAI  # used for OpenRouter + DeepSeek (both OpenAI-compatible APIs)
+import google.generativeai as genai
+
+from app import config
+
+
+SYSTEM_PROMPT = (
+    "You are a helpful documentation assistant. Answer the user's question "
+    "using ONLY the retrieved context and conversation history provided. "
+    "If the answer isn't in the context, say you don't know based on the "
+    "available documents. Be concise and accurate."
+)
+
+
+class BaseLLMProvider:
+    def generate_answer(self, prompt: str, context: str) -> str:
+        raise NotImplementedError
+
+
+class GroqProvider(BaseLLMProvider):
+    def __init__(self, model: str = None):
+        self.client = Groq(api_key=config.GROQ_API_KEY)
+        self.model = model or config.PROVIDER_MODELS["groq"]
+
+    def generate_answer(self, prompt: str, context: str) -> str:
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": f"{context}\n\nQuestion: {prompt}"},
+            ],
+            temperature=0.3,
+        )
+        return response.choices[0].message.content
+
+
+class GeminiProvider(BaseLLMProvider):
+    def __init__(self, model: str = None):
+        genai.configure(api_key=config.GEMINI_API_KEY)
+        self.model_name = model or config.PROVIDER_MODELS["gemini"]
+        self.model = genai.GenerativeModel(
+            model_name=self.model_name,
+            system_instruction=SYSTEM_PROMPT,
+        )
+
+    def generate_answer(self, prompt: str, context: str) -> str:
+        response = self.model.generate_content(
+            f"{context}\n\nQuestion: {prompt}"
+        )
+        return response.text
+
+
+class OpenRouterProvider(BaseLLMProvider):
+    def __init__(self, model: str = None):
+        self.client = OpenAI(
+            api_key=config.OPENROUTER_API_KEY,
+            base_url="https://openrouter.ai/api/v1",
+        )
+        self.model = model or config.PROVIDER_MODELS["openrouter"]
+
+    def generate_answer(self, prompt: str, context: str) -> str:
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": f"{context}\n\nQuestion: {prompt}"},
+            ],
+            temperature=0.3,
+        )
+        return response.choices[0].message.content
+
+
+class DeepSeekProvider(BaseLLMProvider):
+    def __init__(self, model: str = None):
+        self.client = OpenAI(
+            api_key=config.DEEPSEEK_API_KEY,
+            base_url="https://api.deepseek.com",
+        )
+        self.model = model or config.PROVIDER_MODELS["deepseek"]
+
+    def generate_answer(self, prompt: str, context: str) -> str:
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": f"{context}\n\nQuestion: {prompt}"},
+            ],
+            temperature=0.3,
+        )
+        return response.choices[0].message.content
+
+
+PROVIDER_REGISTRY = {
+    "groq": GroqProvider,
+    "gemini": GeminiProvider,
+    "openrouter": OpenRouterProvider,
+    "deepseek": DeepSeekProvider,
+}
 
 
 class LLMService:
+    """
+    Router that picks a provider adapter based on `provider` (and optional
+    `model` override). Usage stays the same as before:
+        llm = LLMService(provider="groq")
+        llm.generate_answer(prompt, context)
+    """
 
-    def __init__(self):
+    def __init__(self, provider: str = None, model: str = None):
+        provider = provider or config.DEFAULT_PROVIDER
+        if provider not in PROVIDER_REGISTRY:
+            raise ValueError(
+                f"Unknown provider '{provider}'. "
+                f"Choose from: {list(PROVIDER_REGISTRY.keys())}"
+            )
+        self._impl = PROVIDER_REGISTRY[provider](model=model)
+        self.provider = provider
+        self.model = model or config.PROVIDER_MODELS[provider]
 
-        load_dotenv()
-
-        api_key = os.getenv("GROQ_API_KEY")
-
-        if not api_key:
-            raise ValueError("GROQ_API_KEY not found in .env file.")
-
-        self.client = Groq(
-            api_key=api_key
-        )
-
-    def generate_answer(self, question: str, context: str):
-
-        prompt = f"""
-You are an expert AI assistant.
-
-Answer ONLY using the provided context.
-
-If the answer cannot be found in the context, reply exactly:
-
-"I couldn't find the answer in the provided documents."
-
-==========================
-Context
-==========================
-
-{context}
-
-==========================
-Question
-==========================
-
-{question}
-
-==========================
-Answer
-==========================
-"""
-
-        response = self.client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You answer questions only from the supplied context."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            temperature=0,
-            max_tokens=512,
-        )
-
-        return response.choices[0].message.content
+    def generate_answer(self, prompt: str, context: str) -> str:
+        try:
+            return self._impl.generate_answer(prompt, context)
+        except Exception as e:
+            return f"⚠️ Error from {self.provider} ({self.model}): {str(e)}"

@@ -3,15 +3,17 @@ import fitz
 
 class PDFLoader:
 
-    def load_pdf(self, file_path: str):
-
-        document = fitz.open(file_path)
+    def load_pdf(self, file_path: str) -> str:
 
         text = ""
 
-        for page in document:
-            text += page.get_text()
+        with fitz.open(file_path) as document:
 
-        document.close()
+            for page in document:
+
+                page_text = page.get_text()
+
+                if page_text:
+                    text += page_text + "\n"
 
         return text
