@@ -51,7 +51,7 @@ MAX_HISTORY = 6
 # ChromaDB retrieval distance threshold.
 # Smaller distance = closer semantic match.
 # This is a starting value and can be tuned later.
-MAX_DISTANCE = 1.2
+MAX_DISTANCE = 2.0
 
 
 # ==================================================
@@ -73,18 +73,12 @@ if "chat_counter" not in st.session_state:
 # ==================================================
 # SIDEBAR
 # ==================================================
-
 with st.sidebar:
 
     st.title("🤖 AI Assistant")
-
     st.markdown("---")
 
-
-    # ==================================================
     # SEARCH SETTINGS
-    # ==================================================
-
     st.subheader("⚙ Search Settings")
 
     top_k = st.slider(
@@ -93,296 +87,20 @@ with st.sidebar:
         max_value=10,
         value=3
     )
+    
 
-
-    # ==================================================
-# DOCUMENT SELECTION + DELETE
-# ==================================================
-
-st.markdown("---")
-st.subheader("📄 Document")
-
-try:
-    indexed_files = retriever.get_indexed_files()
-except Exception as e:
-    indexed_files = []
-    st.warning(f"Unable to load documents: {e}")
-
-
-# --------------------------------------------------
-# SEARCH DOCUMENT SELECTION
-# --------------------------------------------------
-
-document_options = ["All Documents"] + indexed_files
-
-selected_document = st.selectbox(
-    "Search in",
-    document_options,
-    key="document_search_select"
-)
-
-selected_file = (
-    None
-    if selected_document == "All Documents"
-    else selected_document
-)
-
-
-# --------------------------------------------------
-# DELETE DOCUMENT
-# --------------------------------------------------
-
-if indexed_files:
-
-    st.markdown("##### 🗑 Manage Documents")
-
-    document_to_delete = st.selectbox(
-        "Document to delete",
-        indexed_files,
-        key="document_delete_select"
-    )
-
-    if st.button(
-        "🗑 Delete Document",
-        use_container_width=True,
-        type="secondary"
-    ):
-
-        try:
-
-            deleted_count = indexer.delete_document(
-                document_to_delete
-            )
-
-            if deleted_count > 0:
-
-                st.success(
-                    f"✅ Deleted '{document_to_delete}' "
-                    f"({deleted_count} chunks)."
-                )
-
-                # Clear Streamlit cached services
-                st.cache_resource.clear()
-
-                st.rerun()
-
-            else:
-
-                st.warning(
-                    f"No indexed chunks were found for "
-                    f"'{document_to_delete}'."
-                )
-
-        except Exception as e:
-
-            st.error(
-                f"Failed to delete document: {str(e)}"
-            )
-
-else:
-
-    st.caption(
-        "No indexed documents available to delete."
-    )
-
-
-    # ==================================================
-    # DELETE SELECTED DOCUMENT
-    # ==================================================
-
-    if selected_file:
-
-        if st.button(
-            "🗑 Delete Selected Document",
-            use_container_width=True
-        ):
-
-            try:
-
-                deleted_count = (
-                    indexer.delete_document(
-                        selected_file
-                    )
-                )
-
-                if deleted_count > 0:
-
-                    st.success(
-                        f"✅ Deleted "
-                        f"{selected_file} "
-                        f"({deleted_count} chunks)"
-                    )
-
-                    # Refresh cached services
-                    st.cache_resource.clear()
-
-                    st.rerun()
-
-                else:
-
-                    st.warning(
-                        "Document was not found."
-                    )
-
-            except Exception as e:
-
-                st.error(
-                    f"Failed to delete document: "
-                    f"{str(e)}"
-                )
-
-
-    # ==================================================
-    # CHAT SESSIONS
-    # ==================================================
-
-    st.markdown("---")
-
-    st.subheader("💬 Chats")
-
-
-    # ------------------------------
-    # NEW CHAT
-    # ------------------------------
-
-    if st.button(
-        "➕ New Chat",
-        use_container_width=True
-    ):
-
-        st.session_state.chat_counter += 1
-
-        new_name = (
-            f"Chat {st.session_state.chat_counter}"
-        )
-
-        st.session_state.chat_sessions[
-            new_name
-        ] = []
-
-        st.session_state.current_chat = (
-            new_name
-        )
-
-        st.rerun()
-
-
-    # ------------------------------
-    # CHAT HISTORY
-    # ------------------------------
-
-    chat_names = list(
-        st.session_state.chat_sessions.keys()
-    )
-
-
-    if (
-        st.session_state.current_chat
-        not in chat_names
-    ):
-        st.session_state.current_chat = (
-            chat_names[0]
-        )
-
-
-    selected_chat = st.radio(
-        "History",
-        chat_names,
-        index=chat_names.index(
-            st.session_state.current_chat
-        ),
-        label_visibility="collapsed"
-    )
-
-
-    if (
-        selected_chat
-        != st.session_state.current_chat
-    ):
-
-        st.session_state.current_chat = (
-            selected_chat
-        )
-
-        st.rerun()
-
-
-    # ------------------------------
-    # CLEAR CURRENT CHAT
-    # ------------------------------
-
-    st.markdown("---")
-
-    if st.button(
-        "🗑 Clear Current Chat",
-        use_container_width=True
-    ):
-
-        st.session_state.chat_sessions[
-            st.session_state.current_chat
-        ] = []
-
-        st.rerun()
-
-
-    # ------------------------------
-    # DELETE CURRENT CHAT
-    # ------------------------------
-
-    if len(
-        st.session_state.chat_sessions
-    ) > 1:
-
-        if st.button(
-            "❌ Delete Current Chat",
-            use_container_width=True
-        ):
-
-            del st.session_state.chat_sessions[
-                st.session_state.current_chat
-            ]
-
-            st.session_state.current_chat = (
-                list(
-                    st.session_state.chat_sessions.keys()
-                )[0]
-            )
-
-            st.rerun()
-
-
-    # ==================================================
     # DATABASE
-    # ==================================================
-
     st.markdown("---")
-
     st.subheader("📊 Database")
 
     try:
-
-        indexed_chunks = (
-            retriever.collection.count()
-        )
-
-        st.metric(
-            label="Indexed Chunks",
-            value=indexed_chunks
-        )
-
+        indexed_chunks = retriever.collection.count()
+        st.metric("Indexed Chunks", indexed_chunks)
     except Exception:
+        st.warning("Unable to read ChromaDB collection.")
 
-        st.warning(
-            "Unable to read ChromaDB collection."
-        )
-
-
-    # ==================================================
     # PDF UPLOAD
-    # ==================================================
-
     st.markdown("---")
-
     st.subheader("📂 Upload PDF")
 
     uploaded_file = st.file_uploader(
@@ -391,87 +109,50 @@ else:
         accept_multiple_files=False
     )
 
-
     if uploaded_file is not None:
 
-        st.caption(
-            f"Selected: {uploaded_file.name}"
-        )
-
+        st.caption(f"Selected: {uploaded_file.name}")
 
         if st.button(
             "📥 Index this PDF",
             use_container_width=True
         ):
 
-            with st.spinner(
-                f"Indexing {uploaded_file.name}..."
-            ):
+            try:
+                with st.spinner(
+                    f"Indexing {uploaded_file.name}..."
+                ):
 
-                try:
+                    file_bytes = uploaded_file.getvalue()
 
-                    # Get PDF bytes
-                    file_bytes = (
-                        uploaded_file.getvalue()
+                    n_chunks = indexer.index_pdf_bytes(
+                        file_bytes,
+                        uploaded_file.name
                     )
 
-                    # Index PDF
-                    n_chunks = (
-                        indexer.index_pdf_bytes(
-                            file_bytes,
-                            uploaded_file.name
-                        )
+                if n_chunks == -1:
+                    st.warning(
+                        f"{uploaded_file.name} is already indexed."
                     )
 
-
-                    # ----------------------------------
-                    # DUPLICATE DOCUMENT
-                    # ----------------------------------
-
-                    if n_chunks == -1:
-
-                        st.warning(
-                            f"⚠️ {uploaded_file.name} "
-                            "is already indexed."
-                        )
-
-
-                    # ----------------------------------
-                    # SUCCESS
-                    # ----------------------------------
-
-                    elif n_chunks > 0:
-
-                        st.success(
-                            f"✅ Indexed {n_chunks} "
-                            f"chunks from "
-                            f"{uploaded_file.name}"
-                        )
-
-                        # Refresh cached services
-                        st.cache_resource.clear()
-
-                        st.rerun()
-
-
-                    # ----------------------------------
-                    # NO TEXT
-                    # ----------------------------------
-
-                    else:
-
-                        st.warning(
-                            "No text could be "
-                            "extracted from this PDF."
-                        )
-
-
-                except Exception as e:
-
-                    st.error(
-                        f"Failed to index PDF: "
-                        f"{str(e)}"
+                elif n_chunks > 0:
+                    st.success(
+                        f"Indexed {n_chunks} chunks from "
+                        f"{uploaded_file.name}"
                     )
+
+                    st.cache_resource.clear()
+                    st.rerun()
+
+                else:
+                    st.warning(
+                        "No text could be extracted from this PDF."
+                    )
+
+            except Exception as e:
+                st.error(
+                    f"Failed to index PDF: {str(e)}"
+                )
 
 
     # ==================================================
@@ -513,22 +194,31 @@ st.title(
 )
 
 
-# ==================================================
-# SELECTED DOCUMENT INFORMATION
-# ==================================================
+    # ==================================================
+    # DOCUMENT SELECTION
+    # ==================================================
 
-if selected_file:
+st.markdown("---")
+st.subheader("📄 Documents")
 
-    st.caption(
-        f"Session: **{st.session_state.current_chat}** "
-        f"— Searching in: **{selected_file}**"
+try:
+        indexed_files = retriever.get_indexed_files()
+except Exception as e:
+        indexed_files = []
+        st.warning(f"Unable to load documents: {e}")
+
+document_options = ["All Documents"] + indexed_files
+
+selected_document = st.selectbox(
+        "Search in",
+        document_options,
+        key="document_search_select"
     )
 
-else:
-
-    st.caption(
-        f"Session: **{st.session_state.current_chat}** "
-        "— Searching in all indexed documents."
+selected_file = (
+        None
+        if selected_document == "All Documents"
+        else selected_document
     )
 
 
